@@ -124,9 +124,9 @@ class HammerWall:
 
         # ステート制御
         self.state = "warning"
-        self.warning_speed = 3.2    # 上から顔を出すスピードを素早く（0.6 → 3.2）
+        self.warning_speed = 3.2  # 上から顔を出すスピードを素早く（0.6 → 3.2）
         self.warning_target_y = 15
-        self.hold_timer = 25        # 「ごごごご…」のタメ時間はそのままキープ
+        self.hold_timer = 25  # 「ごごごご…」のタメ時間はそのままキープ
         self.ground_hold_timer = 20
 
         self.update_rects()
@@ -195,26 +195,28 @@ class HammerWall:
     def collide(self, player_rect):
         return self.left_rect.colliderect(player_rect) or self.right_rect.colliderect(player_rect)
 
+
+#アイテムシステム
 class Item:
     def __init__(self):
-        self.size = 30
-
-        self.x = random.randint(50, WIDTH - 50)
+        self.size = 30  # アイテムの大きさ
+        self.x = random.randint(50, WIDTH - 50)   # 画面上部のランダムな位置に生成
         self.y = -30
-
-        self.speed = 4
-
+        self.speed = 4   # 落下速度
         self.kind = random.choice(
             ["hp", "invincible", "speed", "small"]
         )
-
+        # アイテムの種類をランダムに決定
+        # hp:体力回復
+        # invincible:無敵
+        # speed:移動速度上昇
+        # small:こうかとん縮小
         self.rect = pg.Rect(
             self.x,
             self.y,
             self.size,
             self.size
         )
-
     def update(self):
         self.y += self.speed
         self.rect.y = self.y
@@ -222,19 +224,18 @@ class Item:
     def draw(self, surf):
 
         colors = {
-            "hp": (255, 0, 0),
-            "invincible": (255, 255, 0),
-            "speed": (0, 255, 0),
-            "small": (180, 0, 255)
+            "hp": (255, 0, 0),  # 赤：HP回復
+            "invincible": (255, 255, 0),  # 黄：無敵
+            "speed": (0, 255, 0),  # 緑：加速
+            "small": (180, 0, 255)  # 紫：縮小
         }
-
         pg.draw.circle(
             surf,
             colors[self.kind],
             self.rect.center,
             self.size // 2
         )
-
+        
 # 背景描画
 def draw_background(target_surf, bg_img):
     if bg_img:
