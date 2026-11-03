@@ -43,6 +43,9 @@ class Player:
         self.boost_speed = 14.0
         self.rect = pg.Rect(self.x, self.y, self.w, self.h)
         self.facing_right = True
+        self.invincible_timer = 0
+        self.speed_timer = 0
+        self.small_timer = 0
 
         raw_img = load_image_with_fallback(["3.png"])
         if raw_img:
@@ -60,8 +63,17 @@ class Player:
         self.img_right = pg.transform.flip(base_img, True, False)
 
     def update(self, shift_pressed):
+        if self.invincible_timer > 0:
+            self.invincible_timer -= 1
+        if self.speed_timer > 0:
+            self.speed_timer -= 1
+        if self.small_timer > 0:
+            self.small_timer -= 1
+
         keys = pg.key.get_pressed()
         spd = self.boost_speed if shift_pressed else self.normal_speed
+        if self.speed_timer > 0:
+            spd += 5
 
         if keys[pg.K_a] or keys[pg.K_LEFT]:
             self.x -= spd
@@ -72,10 +84,30 @@ class Player:
 
         self.x = max(0, min(self.x, WIDTH - self.w))
         self.rect.x = self.x
+        if self.small_timer > 0:
+            self.rect.width = 40
+            self.rect.height = 40
+        else:
+            self.rect.width = 65
+            self.rect.height = 65
 
     def draw(self, target_surf):
         img = self.img_right if self.facing_right else self.img_left
-        target_surf.blit(img, self.rect)
+
+        if self.small_timer > 0:
+            small_img = pg.transform.scale(
+                img,
+                (40, 40)
+            )
+            target_surf.blit(
+                small_img,
+                (self.rect.x, self.rect.y)
+            )
+        else:
+            target_surf.blit(
+                img,
+                self.rect
+            )
 
 
 # 杭打ち機の壁（上からの登場スピード強化版）
@@ -163,6 +195,45 @@ class HammerWall:
     def collide(self, player_rect):
         return self.left_rect.colliderect(player_rect) or self.right_rect.colliderect(player_rect)
 
+class Item:
+    def __init__(self):
+        self.size = 30
+
+        self.x = random.randint(50, WIDTH - 50)
+        self.y = -30
+
+        self.speed = 4
+
+        self.kind = random.choice(
+            ["hp", "invincible", "speed", "small"]
+        )
+
+        self.rect = pg.Rect(
+            self.x,
+            self.y,
+            self.size,
+            self.size
+        )
+
+    def update(self):
+        self.y += self.speed
+        self.rect.y = self.y
+
+    def draw(self, surf):
+
+        colors = {
+            "hp": (255, 0, 0),
+            "invincible": (255, 255, 0),
+            "speed": (0, 255, 0),
+            "small": (180, 0, 255)
+        }
+
+        pg.draw.circle(
+            surf,
+            colors[self.kind],
+            self.rect.center,
+            self.size // 2
+        )
 
 # 背景描画
 def draw_background(target_surf, bg_img):
@@ -181,6 +252,9 @@ def main():
     wall = HammerWall(base_speed=15.0)
     score = 0
     game_over = False
+    items = []
+    item_timer = 0
+    hp = 100 
 
     canvas = pg.Surface((WIDTH, HEIGHT))
     big_shake_timer = 0
@@ -207,23 +281,58 @@ def main():
 
         if not game_over:
             player.update(shift_pressed)
+            item_timer += 1
+
+            if item_timer >= 300:
+                items.append(Item())
+                item_timer = 0
 
             if wall.update():
                 score += 1
                 wall.base_down_speed = 15.0 + score * 0.5
                 big_shake_timer = 10
+            for item in items[:]:
+                item.update()
+
+                if item.rect.colliderect(player.rect):
+                    if item.kind == "hp":
+                        hp = min(hp + 10, 100)
+                    elif item.kind == "invincible":
+                        player.invincible_timer = 180
+                    elif item.kind == "speed":
+                        player.speed_timer = 300
+                    elif item.kind == "small":
+                        player.small_timer = 300
+                    items.remove(item)
+                elif item.y > HEIGHT:
+                    items.remove(item)
 
             if wall.collide(player.rect):
-                game_over = True
+                if player.invincible_timer <= 0:
+                    game_over = True
 
         draw_background(canvas, bg_img)
         wall.draw(canvas)
+        for item in items:
+            item.draw(canvas)
         player.draw(canvas)
 
         # スコアのみ表示
         text_color = (30, 30, 30) if bg_img else (255, 255, 255)
-        score_surf = font.render(f"Score: {score}", True, text_color)
+        score_surf = font.render(
+            f"Score: {score}",
+            True,
+            text_color
+            )
         canvas.blit(score_surf, (20, 20))
+
+        # HP表示
+        hp_surf = font.render(
+            f"HP: {hp}",
+            True,
+            (255, 100, 100)
+            )
+        canvas.blit(hp_surf, (20, 60))
 
         # ---------------- 画面振動 ----------------
         offset_x = 0
