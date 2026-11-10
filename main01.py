@@ -3,6 +3,8 @@ import random
 import sys
 import pygame as pg
 
+# スクリプトの保存先フォルダをカレントディレクトリに変更
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 WIDTH = 1100
 HEIGHT = 650
 FPS = 60
@@ -53,6 +55,58 @@ def load_image_with_fallback(filenames):
                 except Exception:
                     pass
     return None
+
+# HP管理クラス（追加：審査用、HP/無敵時間/描画をまとめる）
+
+class HpManager:
+    
+    def __init__(self, max_hp:int, damage:int, invincible_frame:int) -> None:
+        """HP管理の初期化"""    
+        self.max_hp = max_hp
+        self.hp = max_hp
+        self.damage = damage
+        self.invincible_frame = invincible_frame
+        self.invincible_timer = 0
+        self.hit_flash_timer = 0
+
+    def update(self) -> None:
+        """無敵時間の更新処理"""   
+        if self.invincible_timer > 0:
+            self.invincible_timer -= 1
+        if self.hit_flash_timer > 0:
+            self.hit_flash_timer -=1                                                                                                             
+    def take_damage(self) -> None:
+        """ダメージを受ける処理"""   
+        if self.invincible_timer <= 0:
+            self.hp -= self.damage
+            self.invincible_timer = self.invincible_frame
+            self.hit_flash_timer = 12  
+            if self.hp < 0:
+                self.hp = 0
+
+    def is_dead(self) -> int:
+        """死亡判定を返す"""   
+        return self.hp <= 0
+    
+    def draw(self, target_surf: pg.Surface, font:pg.font, text_color:tuple) -> None:
+        # 描画処理
+        """HPバー描画"""
+        bar_x = 20
+        bar_y = 70
+        bar_w = 200
+        bar_h = 22
+        pg.draw.rect(target_surf, (40, 40, 40), (bar_x, bar_y, bar_w, bar_h))
+        hp_ratio = self.hp / self.max_hp
+        if hp_ratio > 0.5:
+            hp_color = (0, 220, 0)
+        elif hp_ratio > 0.25:
+            hp_color = (220, 180, 0)
+        else:
+            hp_color = (220, 0, 0)
+        pg.draw.rect(target_surf, hp_color, (bar_x, bar_y, bar_w * hp_ratio, bar_h))
+        pg.draw.rect(target_surf, (255,255,255), (bar_x, bar_y, bar_w, bar_h), 2)
+        hp_text = font.render(f"HP: {self.hp}/{self.max_hp}", True, text_color)
+        target_surf.blit(hp_text, (bar_x + bar_w + 10, bar_y))
 
 
 # ----------------------------------------------------
@@ -120,7 +174,6 @@ class Player:
         if keys[pg.K_d] or keys[pg.K_RIGHT]:
             self.x += spd
             self.facing_right = True
-
         self.x = max(0, min(self.x, WIDTH - self.w))
 
         # ↓追記部分
@@ -151,7 +204,6 @@ class Player:
         # ↑追記部分
 
         self.rect = pg.Rect(self.x, self.y, self.w, self.h)
-
     def draw(self, target_surf: pg.Surface) -> None:
         """プレイヤー描画"""
         img = self.img_right if self.facing_right else self.img_left
@@ -215,13 +267,11 @@ class HammerWall:
             if self.y >= self.warning_target_y:
                 self.state = "hold"
                 self.timer = self.hold_timer
-
         elif self.state == "hold":
             self.timer -= 1
             if self.timer <= 0:
                 self.state = "falling"
                 self.down_speed = self.base_down_speed
-
         elif self.state == "falling":
             self.y += self.down_speed
             self.down_speed += 2.5
@@ -241,12 +291,10 @@ class HammerWall:
                 self.state = "ground_hold"
                 self.timer = self.ground_hold_timer
                 passed = True
-
         elif self.state == "ground_hold":
             self.timer -= 1
             if self.timer <= 0:
                 self.state = "rising"
-
         elif self.state == "rising":
             self.y -= self.rise_speed
             if self.y <= -self.h:
@@ -333,7 +381,6 @@ def draw_background(target_surf, bg_img):
         for y in range(0, HEIGHT, 50):
             pg.draw.line(target_surf, (32, 38, 58), (0, y), (WIDTH, y))
 
-
 def main():
     score = 0
     state = "TITLE"
@@ -342,8 +389,10 @@ def main():
 
     player = Player(char_types[selected_char_idx])
     wall = HammerWall(base_speed=15.0)
-    prev_state = wall.state  # 音のタイミング検知用
-
+    score = 0
+    game_over = False
+    # HPはクラスで管理
+    hp_manager = HpManager(max_hp=100, damage=20, invincible_frame=60)
     canvas = pg.Surface((WIDTH, HEIGHT))
     big_shake_timer = 0
 
@@ -365,55 +414,14 @@ def main():
 
     while True:
         clock.tick(FPS)
-        shift_pressed = pg.key.get_pressed()[pg.K_LSHIFT] or pg.key.get_pressed()[
-            pg.K_RSHIFT
-        ]
-
+        shift_pressed = pg.key.get_pressed()[pg.K_LSHIFT] or pg.key.get_pressed()[pg.K_RSHIFT]
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 pg.quit()
                 sys.exit()
 
-            if event.type == pg.KEYDOWN:
-                # 【追加】ダッシュ音（Shiftキーを押した瞬間）
-                if event.key == pg.K_LSHIFT or event.key == pg.K_RSHIFT:
-                    dash_se.play()
-
-                if state == "TITLE":
-                    # 矢印キーでキャラ切り替え
-                    if event.key in (pg.K_LEFT, pg.K_RIGHT, pg.K_a, pg.K_d):
-                        selected_char_idx = (selected_char_idx + 1) % 2
-                        player = Player(char_types[selected_char_idx])
-                    elif event.key == pg.K_SPACE:
-                        state = "GAME"
-                        player = Player(char_types[selected_char_idx])
-                        wall = HammerWall(base_speed=15.0)
-                        score = 0
-                        pg.mixer.music.play(-1)  # ゲーム開始時にもBGMを再生
-
-                elif state == "GAMEOVER" and event.key == pg.K_SPACE:
-                    state = "TITLE"
-                    player = Player(char_types[selected_char_idx])
-                    pg.mixer.music.play(-1)  # タイトルに戻ったときもBGM再生
-
-        draw_background(canvas, bg_img)
-
-        # 1. スタート画面
-        if state == "TITLE":
-            t_surf = font_large.render(
-                "こうかとん回避ゲーム", True, (0, 200, 200)
-            )
-            s_surf = font.render(
-                "◀ 矢印キーでキャラ選択 ▶  /  SPACE START", True, (255, 0, 0)
-            )
-            canvas.blit(t_surf, t_surf.get_rect(center=(WIDTH // 2, 200)))
-            canvas.blit(s_surf, s_surf.get_rect(center=(WIDTH // 2, 280)))
-            player.draw(canvas)
-
-        # 2. プレイ画面
-        elif state == "GAME":
+        if not game_over:
             player.update(shift_pressed)
-
             if wall.update():
                 score += 1
                 wall.base_down_speed = 15.0 + score * 0.5
@@ -451,6 +459,31 @@ def main():
             canvas.blit(sc_surf, sc_surf.get_rect(center=(WIDTH // 2, 300)))
             canvas.blit(rt_surf, rt_surf.get_rect(center=(WIDTH // 2, 370)))
 
+            hp_manager.update()
+            # 衝突判定
+            if wall.collide(player.rect):
+                hp_manager.take_damage()
+            # 受击時、隙間へ強制移動、壁に挟まらないようにする
+                safe_center = wall.gap_x + wall.gap_w / 2
+                player.x = safe_center - player.w / 2
+                player.x = max(0, min(player.x, WIDTH - player.w))
+                player.rect.x = player.x
+                if hp_manager.is_dead():
+                    game_over = True
+        draw_background(canvas, bg_img)
+        wall.draw(canvas)
+        player.draw(canvas)
+        text_color = (30, 30, 30) if bg_img else (255, 255, 255)
+        score_surf = font.render(f"Score: {score}", True, text_color)
+        canvas.blit(score_surf, (20, 20))
+        # HP描画呼び出し
+        hp_manager.draw(canvas, font, text_color)
+        # 被弾時の赤フラッシュエフェクト
+        if hp_manager.hit_flash_timer > 0:
+            overlay = pg.Surface((WIDTH, HEIGHT))
+            overlay.fill((255,0,0))
+            overlay.set_alpha(60)
+            canvas.blit(overlay,(0,0))
         # ---------------- 画面振動 ----------------
         offset_x, offset_y = 0, 0
         if state == "GAME":
@@ -471,7 +504,6 @@ def main():
         screen.fill((0, 0, 0))
         screen.blit(canvas, (offset_x, offset_y))
         pg.display.flip()
-
 
 if __name__ == "__main__":
     main()
