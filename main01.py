@@ -206,6 +206,24 @@ class Item:
         self.kind = random.choice(
             ["hp", "invincible", "speed", "small"]
         )
+        img_files = {
+            "hp": "hp.png",
+            "invincible": "invincible.png",
+            "speed": "speed.png",
+            "small": "small.png"
+        }
+
+        raw_img = load_image_with_fallback(
+            [img_files[self.kind]]
+        )
+
+        if raw_img:
+            self.image = pg.transform.scale(
+                raw_img.convert_alpha(),
+                (self.size, self.size)
+            )
+        else:
+            self.image = None
         # アイテムの種類をランダムに決定
         # hp:体力回復
         # invincible:無敵
@@ -220,22 +238,14 @@ class Item:
     def update(self):
         self.y += self.speed
         self.rect.y = self.y
-
+    
     def draw(self, surf):
+        if self.image:
+            surf.blit(
+                self.image,
+                self.rect
+            )
 
-        colors = {
-            "hp": (255, 0, 0),  # 赤：HP回復
-            "invincible": (255, 255, 0),  # 黄：無敵
-            "speed": (0, 255, 0),  # 緑：加速
-            "small": (180, 0, 255)  # 紫：縮小
-        }
-        pg.draw.circle(
-            surf,
-            colors[self.kind],
-            self.rect.center,
-            self.size // 2
-        )
-        
 # 背景描画
 def draw_background(target_surf, bg_img):
     if bg_img:
