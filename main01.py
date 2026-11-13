@@ -64,7 +64,7 @@ def load_image_with_fallback(filenames):
 # ==================== HP管理クラス ====================
 class HpManager:
     """HP/無敵時間/描画/フラッシュ演出を統合管理するクラス"""
-
+    # プレイヤー（こうかとん: 3.png）
     def __init__(self, max_hp: int, damage: int, invincible_frame: int) -> None:
         self.max_hp = max_hp
         self.hp = max_hp
@@ -90,6 +90,10 @@ class HpManager:
                 self.hp = 0
             return True
         return False
+
+    def heal(self, amount: int) -> None:
+        """HPを回復する処理"""
+        self.hp = min(self.max_hp, self.hp + amount)
 
     def is_dead(self) -> bool:
         """死亡判定"""
@@ -148,6 +152,8 @@ class Player:
         self.vy: float = 0.0
 
         self.is_crouching: bool = False
+        self.speed_timer: int = 0
+        self.small_timer: int = 0
 
         self.rect: pg.Rect = pg.Rect(self.x, self.y, self.w, self.h)
         self.facing_right: bool = True
@@ -177,8 +183,15 @@ class Player:
 
     def update(self, shift_pressed: bool) -> None:
         """キー入力に応じて移動・ジャンプ・しゃがみ状態を更新する"""
+        if self.speed_timer > 0:
+            self.speed_timer -= 1
+        if self.small_timer > 0:
+            self.small_timer -= 1
+
         keys = pg.key.get_pressed()
         spd = self.boost_speed if shift_pressed else self.normal_speed
+        if self.speed_timer > 0:
+            spd += 5.0
 
         # 左右移動
         if keys[pg.K_a] or keys[pg.K_LEFT]:
@@ -188,18 +201,23 @@ class Player:
             self.x += spd
             self.facing_right = True
 
-        self.x = max(0, min(self.x, WIDTH - self.w))
+        # 縮小アイテムに応じた基準サイズ計算
+        scale = 0.6 if self.small_timer > 0 else 1.0
+        self.w = int(65 * scale)
+        current_base_h = int(self.base_h * scale)
 
         # しゃがみ処理 (Sキー / ↓キー)
         if (keys[pg.K_s] or keys[pg.K_DOWN]) and not self.is_jumping:
             self.is_crouching = True
-            self.h = 30  # 身長を小さくする
-            self.y = self.base_y + (self.base_h - self.h)
+            self.h = int(current_base_h * 0.5)
         else:
             self.is_crouching = False
-            self.h = self.base_h
-            if not self.is_jumping:
-                self.y = self.base_y
+            self.h = current_base_h
+
+        # 地面基準Y座標（足元の位置を揃える）
+        ground_y = self.base_y + self.base_h
+        if not self.is_jumping:
+            self.y = ground_y - self.h
 
         # ジャンプ開始 (Wキー / ↑キー / Spaceキー)
         if (
@@ -214,23 +232,22 @@ class Player:
         if self.is_jumping:
             self.y += self.vy
             self.vy += self.gravity
-            if self.y >= self.base_y:
-                self.y = self.base_y
+            if self.y + self.h >= ground_y:
+                self.y = ground_y - self.h
                 self.is_jumping = False
                 self.vy = 0.0
 
+        self.x = max(0, min(self.x, WIDTH - self.w))
         self.rect = pg.Rect(self.x, self.y, self.w, self.h)
 
     def draw(self, target_surf: pg.Surface) -> None:
         """プレイヤー描画"""
         img = self.img_right if self.facing_right else self.img_left
-        if self.is_crouching:
+        if (self.w, self.h) != (65, self.base_h):
             scaled_img = pg.transform.scale(img, (self.w, self.h))
             target_surf.blit(scaled_img, self.rect)
         else:
             target_surf.blit(img, self.rect)
-
-
 # ----------------------------------------------------
 # 杭打ち機の壁クラス
 # ----------------------------------------------------
@@ -249,11 +266,13 @@ class HammerWall:
         self.wall_type: str = random.choice(["normal", "crouch", "jump"])
         self.dodged: bool = False
 
-        self.state: str = "warning"
-        self.warning_speed: float = 3.2
-        self.warning_target_y: float = 15.0
-        self.hold_timer: int = 25
-        self.ground_hold_timer: int = 20
+        # ステート制御
+        self.state = "warning"
+        self.warning_speed = 3.2  # 上から顔を出すスピードを素早く（0.6 → 3.2）
+        self.warning_target_y = 15
+        self.hold_timer = 25  # 「ごごごご…」のタメ時間はそのままキープ
+        self.ground_hold_timer = 20
+        self.timer: int = 0
 
         self.update_rects()
 
@@ -400,6 +419,57 @@ class HammerWall:
         return False
 
 
+#アイテムシステム
+class Item:
+    def __init__(self):
+        self.size = 30  # アイテムの大きさ
+        self.x = random.randint(50, WIDTH - 50)   # 画面上部のランダムな位置に生成
+        self.y = -30
+        self.speed = 4   # 落下速度
+        self.kind = random.choice(
+            ["hp", "invincible", "speed", "small"]
+        )
+        img_files = {
+            "hp": "hp.png",
+            "invincible": "invincible.png",
+            "speed": "speed.png",
+            "small": "small.png"
+        }
+
+        raw_img = load_image_with_fallback(
+            [img_files[self.kind]]
+        )
+
+        if raw_img:
+            self.image = pg.transform.scale(
+                raw_img.convert_alpha(),
+                (self.size, self.size)
+            )
+        else:
+            self.image = None
+        # アイテムの種類をランダムに決定
+        # hp:体力回復
+        # invincible:無敵
+        # speed:移動速度上昇
+        # small:こうかとん縮小
+        self.rect = pg.Rect(
+            self.x,
+            self.y,
+            self.size,
+            self.size
+        )
+    def update(self):
+        self.y += self.speed
+        self.rect.y = self.y
+    
+    def draw(self, surf):
+        if self.image:
+            surf.blit(
+                self.image,
+                self.rect
+            )
+
+# 背景描画
 def draw_background(target_surf, bg_img):
     if bg_img:
         target_surf.blit(bg_img, (0, 0))
@@ -443,6 +513,8 @@ def main():
     wall = HammerWall(base_speed=15.0)
     hp_manager = HpManager(max_hp=100, damage=40, invincible_frame=60)
     prev_state = wall.state
+    items = []
+    item_timer = 0
 
     canvas = pg.Surface((WIDTH, HEIGHT))
     big_shake_timer = 0
@@ -480,6 +552,8 @@ def main():
                             max_hp=100, damage=40, invincible_frame=60
                         )
                         score = 0
+                        items.clear()
+                        item_timer = 0
                         prev_state = wall.state
                         play_bgm_safe("bgm.mp3", 0.3)
 
@@ -508,6 +582,27 @@ def main():
         elif state == "GAME":
             player.update(shift_pressed)
             hp_manager.update()
+            item_timer += 1
+
+            if item_timer >= 300:
+                items.append(Item())
+                item_timer = 0
+
+            # アイテムの移動と取得判定
+            for item in items[:]:
+                item.update()
+                if item.rect.colliderect(player.rect):
+                    if item.kind == "hp":
+                        hp_manager.heal(20)
+                    elif item.kind == "invincible":
+                        hp_manager.invincible_timer = 180
+                    elif item.kind == "speed":
+                        player.speed_timer = 300
+                    elif item.kind == "small":
+                        player.small_timer = 300
+                    items.remove(item)
+                elif item.y > HEIGHT:
+                    items.remove(item)
 
             if wall.update():
                 score += 1
@@ -529,7 +624,7 @@ def main():
                     if hp_manager.is_dead():
                         state = "GAMEOVER"
                         pg.mixer.music.stop()
-                    else:
+                    elif wall.wall_type == "normal":
                         # 生き残っている場合は壁の隙間の中央へ退避させて連続ダメージを防ぐ
                         safe_center = wall.gap_x + wall.gap_w / 2
                         player.x = safe_center - player.w / 2
@@ -537,6 +632,8 @@ def main():
                         player.rect.x = player.x
 
             wall.draw(canvas)
+            for item in items:
+                item.draw(canvas)
             player.draw(canvas)
 
             text_color = (30, 30, 30) if bg_img else (255, 255, 255)
@@ -555,8 +652,6 @@ def main():
 
         # 3. ゲームオーバー画面
         elif state == "GAMEOVER":
-            # こうかとんと壁は非表示
-
             go_surf = font_large.render("しんだ", True, (255, 50, 50))
             sc_surf = font.render(f"Score: {score}", True, (255, 255, 255))
             rt_surf = font.render(
@@ -591,3 +686,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
