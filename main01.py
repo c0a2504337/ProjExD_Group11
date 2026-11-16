@@ -8,20 +8,17 @@ HEIGHT = 650
 FPS = 60
 
 # ファイルの基準ディレクトリを取得
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 pg.init()
 pg.mixer.init()
-
 screen = pg.display.set_mode((WIDTH, HEIGHT))
 pg.display.set_caption("逃げろ工科トン")
 clock = pg.time.Clock()
 
 
-# ==================== 音声・画像の読み込み補助関数 ====================
-def load_sound_safe(filename, volume=1.0):
-    """効果音ファイルの安全な読み込み（存在しない場合はNone）"""
-    path = os.path.join(BASE_DIR, "sound", filename)
+# 音声ファイル
+def load_sound(filename, volume=1.0):
+    path = os.path.join("sound", filename)
     if os.path.exists(path):
         try:
             snd = pg.mixer.Sound(path)
@@ -32,9 +29,8 @@ def load_sound_safe(filename, volume=1.0):
     return None
 
 
-def play_bgm_safe(filename, volume=0.3):
-    """BGMファイルの安全な読み込みとループ再生"""
-    path = os.path.join(BASE_DIR, "sound", filename)
+def play_bgm(filename, volume=0.3):
+    path = os.path.join("sound", filename)
     if os.path.exists(path):
         try:
             pg.mixer.music.load(path)
@@ -44,12 +40,10 @@ def play_bgm_safe(filename, volume=0.3):
             pass
 
 
-def load_image_with_fallback(filenames):
-    """実行環境に合わせて画像を探索"""
+def load_img(filenames):
     for fname in filenames:
         candidates = [
-            os.path.join(BASE_DIR, "fig", fname),
-            os.path.join(BASE_DIR, fname),
+            os.path.join("fig", fname),
             fname,
         ]
         for path in candidates:
@@ -61,9 +55,9 @@ def load_image_with_fallback(filenames):
     return None
 
 
-# ==================== HP管理クラス ====================
+#HPクラス
 class HpManager:
-    """HP/無敵時間/描画/フラッシュ演出を統合管理するクラス"""
+    "HP/無敵時間/描画/フラッシュ演出を統合管理するクラス"
     # プレイヤー（こうかとん: 3.png）
     def __init__(self, max_hp: int, damage: int, invincible_frame: int) -> None:
         self.max_hp = max_hp
@@ -74,14 +68,14 @@ class HpManager:
         self.hit_flash_timer = 0
 
     def update(self) -> None:
-        """無敵時間と被弾フラッシュタイマーの更新"""
+        "無敵時間と被弾フラッシュタイマーの更新"
         if self.invincible_timer > 0:
             self.invincible_timer -= 1
         if self.hit_flash_timer > 0:
             self.hit_flash_timer -= 1
 
     def take_damage(self) -> bool:
-        """ダメージを受ける処理（実際に受傷したら True を返す）"""
+        "ダメージを受ける処理（実際に受傷したら True を返す）"
         if self.invincible_timer <= 0:
             self.hp -= self.damage
             self.invincible_timer = self.invincible_frame
@@ -92,17 +86,17 @@ class HpManager:
         return False
 
     def heal(self, amount: int) -> None:
-        """HPを回復する処理"""
+        "HPを回復する処理"
         self.hp = min(self.max_hp, self.hp + amount)
 
     def is_dead(self) -> bool:
-        """死亡判定"""
+        "死亡判定"
         return self.hp <= 0
 
     def draw(
         self, target_surf: pg.Surface, font: pg.font.Font, text_color: tuple
     ) -> None:
-        """HPバーおよびテキスト描画"""
+        "HPバーおよびテキスト描画"
         bar_x = 20
         bar_y = 70
         bar_w = 200
@@ -127,11 +121,9 @@ class HpManager:
         target_surf.blit(hp_text, (bar_x + bar_w + 10, bar_y))
 
 
-# ----------------------------------------------------
-# プレイヤー（こうかとん）クラス
-# ----------------------------------------------------
+#こうかとんのクラス
 class Player:
-    """プレイヤーの移動・ジャンプ・しゃがみ状態を管理するクラス"""
+    #プレイヤーの移動・ジャンプ・しゃがみのクラス
 
     def __init__(self, char_type="koukaton") -> None:
         self.char_type = char_type
@@ -145,7 +137,7 @@ class Player:
         self.normal_speed: float = 7.5
         self.boost_speed: float = 14.0
 
-        # ジャンプ・しゃがみ用パラメータ
+        # ジャンプ・しゃがみ用
         self.is_jumping: bool = False
         self.jump_power: float = -20.0
         self.gravity: float = 1.2
@@ -159,7 +151,7 @@ class Player:
         self.facing_right: bool = True
 
         filenames = ["man.png"] if char_type == "man" else ["3.png"]
-        raw_img = load_image_with_fallback(filenames)
+        raw_img = load_img(filenames)
         if raw_img:
             base_img = raw_img.convert_alpha()
             try:
@@ -182,7 +174,7 @@ class Player:
             self.img_right = pg.transform.flip(base_img, True, False)
 
     def update(self, shift_pressed: bool) -> None:
-        """キー入力に応じて移動・ジャンプ・しゃがみ状態を更新する"""
+        #キー入力に応じて移動・ジャンプ・しゃがみ状態
         if self.speed_timer > 0:
             self.speed_timer -= 1
         if self.small_timer > 0:
@@ -201,7 +193,7 @@ class Player:
             self.x += spd
             self.facing_right = True
 
-        # 縮小アイテムに応じた基準サイズ計算
+        # 縮小アイテムによって変化した後のこうかとん
         scale = 0.6 if self.small_timer > 0 else 1.0
         self.w = int(65 * scale)
         current_base_h = int(self.base_h * scale)
@@ -214,7 +206,7 @@ class Player:
             self.is_crouching = False
             self.h = current_base_h
 
-        # 地面基準Y座標（足元の位置を揃える）
+        # 地面基準Y座標
         ground_y = self.base_y + self.base_h
         if not self.is_jumping:
             self.y = ground_y - self.h
@@ -228,7 +220,7 @@ class Player:
             self.is_jumping = True
             self.vy = self.jump_power
 
-        # ジャンプ物理処理
+        # ジャンプ処理
         if self.is_jumping:
             self.y += self.vy
             self.vy += self.gravity
@@ -422,10 +414,10 @@ class HammerWall:
 #アイテムシステム
 class Item:
     def __init__(self):
-        self.size = 30  # アイテムの大きさ
+        self.size = 60 # アイテムの大きさ
         self.x = random.randint(50, WIDTH - 50)   # 画面上部のランダムな位置に生成
         self.y = -30
-        self.speed = 4   # 落下速度
+        self.speed = 5   # 落下速度
         self.kind = random.choice(
             ["hp", "invincible", "speed", "small"]
         )
@@ -436,7 +428,7 @@ class Item:
             "small": "small.png"
         }
 
-        raw_img = load_image_with_fallback(
+        raw_img = load_img(
             [img_files[self.kind]]
         )
 
@@ -483,13 +475,13 @@ def draw_background(target_surf, bg_img):
 
 def main():
     # 効果音・BGMの読み込み（安全処理）
-    impact_se = load_sound_safe("impact.mp3", 0.7)
-    score_se = load_sound_safe("score.mp3", 0.4)
-    dash_se = load_sound_safe("dash.mp3", 1.0)
-    play_bgm_safe("bgm.mp3", 0.3)
+    impact_se = load_sound("impact.mp3", 0.7)
+    score_se = load_sound("score.mp3", 0.4)
+    dash_se = load_sound("dash.mp3", 1.0)
+    play_bgm("bgm.mp3", 0.3)
 
-    raw_bg = load_image_with_fallback(
-        ["pg_bg.jpg", "background.jpg", "background.png"]
+    raw_bg = load_img(
+        ["background.jpg","background.png","pg_bg.jpg"]
     )
     bg_img = (
         pg.transform.smoothscale(raw_bg.convert(), (WIDTH, HEIGHT))
@@ -555,12 +547,12 @@ def main():
                         items.clear()
                         item_timer = 0
                         prev_state = wall.state
-                        play_bgm_safe("bgm.mp3", 0.3)
+                        play_bgm("bgm.mp3", 0.3)
 
                 elif state == "GAMEOVER" and event.key == pg.K_SPACE:
                     state = "TITLE"
                     player = Player(char_types[selected_char_idx])
-                    play_bgm_safe("bgm.mp3", 0.3)
+                    play_bgm("bgm.mp3", 0.3)
 
         draw_background(canvas, bg_img)
 
@@ -584,7 +576,7 @@ def main():
             hp_manager.update()
             item_timer += 1
 
-            if item_timer >= 300:
+            if item_timer >= 600:
                 items.append(Item())
                 item_timer = 0
 
@@ -640,10 +632,10 @@ def main():
             score_surf = font.render(f"Score: {score}", True, text_color)
             canvas.blit(score_surf, (20, 20))
 
-            # HPバー描画
+            # HPバー
             hp_manager.draw(canvas, font, text_color)
 
-            # 被弾時の赤フラッシュエフェクト
+            # 被弾時エフェクト
             if hp_manager.hit_flash_timer > 0:
                 overlay = pg.Surface((WIDTH, HEIGHT))
                 overlay.fill((255, 0, 0))
@@ -653,7 +645,7 @@ def main():
         # 3. ゲームオーバー画面
         elif state == "GAMEOVER":
             go_surf = font_large.render("しんだ", True, (255, 50, 50))
-            sc_surf = font.render(f"Score: {score}", True, (255, 255, 255))
+            sc_surf = font.render(f"Score: {score}", True, (0, 0, 0))
             rt_surf = font.render(
                 "SPACEでタイトルに戻る", True, (255, 0, 0)
             )
@@ -686,4 +678,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
