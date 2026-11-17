@@ -559,7 +559,7 @@ def main():
         # 1. スタート画面
         if state == "TITLE":
             t_surf = font_large.render(
-                "こうかとん回避ゲーム", True, (0, 200, 200)
+                "逃げろこうかとん", True, (0, 200, 200)
             )
             s_surf = font.render(
                 "◀ 矢印キーでキャラ選択 ▶  /  SPACE START",
